@@ -1,0 +1,683 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<modification>
+    <name>Data Encomenda</name>
+    <version>1.5.1</version>
+    <code>Data Encomenda</code>
+    <author>JF Carvalho</author>
+    <link>https://orions.com.br</link>
+
+    <file path="catalog/view/theme/aline/template/common/header.twig">
+      <operation>
+        <search path=""><![CDATA[</head>]]></search>
+        <add position="before"><![CDATA[
+          <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.9.0/js/bootstrap-datepicker.min.js"></script>
+          <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.9.0/css/bootstrap-datepicker.min.css">
+        ]]></add>
+      </operation>
+    </file>
+
+    <file path="admin/view/template/common/header.twig">
+      <operation>
+          <search><![CDATA[</head>]]></search>
+          <add position="before"><![CDATA[
+            <script src="view/javascript/calendar.min.js" type="text/javascript"></script>
+            <script src="view/javascript/pt-br.min.js" type="text/javascript"></script>
+            <link href="view/stylesheet/calendar.min.css" type="text/css" rel="stylesheet" />
+            <script src="https://cdn.jsdelivr.net/npm/sweetalert2@10"></script>
+          ]]></add>
+      </operation>
+    </file>
+
+    <file path="admin/controller/common/dashboard.php">
+      <operation>
+          <search><![CDATA[$this->response->setOutput($this->load->view('common/dashboard', $data));]]></search>
+          <add position="before"><![CDATA[
+            $this->load->model('catalog/product');
+            $data['disabled_dates'] = ($this->model_catalog_product->get_disabled_dates());
+
+            foreach ($data['disabled_dates'] as $key => $date) {
+              $data['disabled_dates'][$key] = [
+                'title' => 'Pedido #'.$date['order_id'],
+                'start' => explode('/', $date['value'])[2].'-'.explode('/', $date['value'])[1].'-'.explode('/', $date['value'])[0]
+              ];
+            }
+
+            $data['disabled_dates'] = json_encode($data['disabled_dates']);
+          ]]></add>
+      </operation>
+
+      <operation>
+          <search><![CDATA[class ControllerCommonDashboard extends Controller {]]></search>
+          <add position="after"><![CDATA[
+            public function add_day()
+            {
+              $data['date'] = $_POST['date'];
+
+              $this->load->model('sale/order');
+              if(!$this->model_sale_order->getAddedDaysTable()){
+                $this->model_sale_order->createAddedDaysTable();
+              }
+
+              $data['added_day'] = $this->model_sale_order->addDay($data['date']);
+
+              $this->response->addHeader('Content-Type: application/json');
+              $this->response->setOutput(json_encode($data));
+            }
+
+            public function rm_day()
+            {
+              $data['date'] = $_POST['date'];
+              $data['status'] = $_POST['status'];
+
+              $this->load->model('sale/order');
+              if(!$this->model_sale_order->getBlockedDaysTable()){
+                $this->model_sale_order->createBlockedDaysTable();
+              }
+
+              $data['blocked_day'] = $this->model_sale_order->blockDay($data['date'], $data['status']);
+
+              $this->response->addHeader('Content-Type: application/json');
+              $this->response->setOutput(json_encode($data));
+            }
+
+            public function get_blocked_days()
+            {
+              $this->load->model('sale/order');
+
+              $data['blocked_days'] = $this->model_sale_order->getBlockedDays();
+
+              $this->response->addHeader('Content-Type: application/json');
+              $this->response->setOutput(json_encode($data));
+            }
+
+          ]]></add>
+      </operation>
+    </file>
+
+    <file path="admin/model/catalog/product.php">
+      <operation>
+          <search><![CDATA[class ModelCatalogProduct extends Model {]]></search>
+          <add position="after"><![CDATA[
+              public function get_disabled_dates()
+              {
+                $query = $this->db->query("SELECT oo.value, oo.order_id from " . DB_PREFIX . "order_option oo INNER JOIN " . DB_PREFIX . "product_option po ON oo.product_option_id = po.product_option_id INNER JOIN " . DB_PREFIX . "option o ON o.option_id = po.option_id INNER JOIN " . DB_PREFIX . "order ord ON ord.order_id = oo.order_id WHERE o.type = 'date' AND ord.order_status_id <> 0");
+
+                return $query->rows;
+              }
+          ]]></add>
+      </operation>
+    </file>
+
+    <file path="admin/model/sale/order.php">
+      <operation>
+        <search><![CDATA[class ModelSaleOrder extends Model {]]></search>
+        <add position="after"><![CDATA[
+          public function getAddedDaysTable()
+          {
+            $query = $this->db->query("SHOW TABLES LIKE 'oc_added_days';");
+
+            return $query->row ? true : false;
+          }
+
+          public function createAddedDaysTable()
+          {
+            $query = $this->db->query("CREATE TABLE `oc_added_days` (
+              id INT(11) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+              day DATE NOT NULL
+            )");
+          }
+
+          public function addDay($date)
+          {
+            $query = $this->db->query("INSERT INTO `oc_added_days` (`id`, `day`) VALUES (NULL, '".$date."')");
+            return $query ? true : false;
+          }
+
+          public function getBlockedDaysTable()
+          {
+            $query = $this->db->query("SHOW TABLES LIKE 'oc_blocked_days';");
+
+            return $query->row ? true : false;
+          }
+
+          public function createBlockedDaysTable()
+          {
+            $query = $this->db->query("CREATE TABLE `oc_blocked_days` (
+              id INT(11) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+              day DATE NOT NULL,
+              status VARCHAR(255) NOT NULL
+            )");
+          }
+
+          public function blockDay($date, $status)
+          {
+            $query = $this->db->query("SELECT COUNT(*) as total, id FROM `oc_blocked_days` WHERE DATE_FORMAT(day, '%Y-%m-%d') = '".$date."'");
+
+            if($query->row['total'] > 0){
+              $id = $query->row['id'];
+              $query = $this->db->query("UPDATE `oc_blocked_days` SET `day` = '".$date."', `status` = '".$status."' WHERE id = " . $id);
+            }else{
+              $query = $this->db->query("INSERT INTO `oc_blocked_days` (`id`, `day`, `status`) VALUES (NULL, '".$date."', '".$status."')");
+            }
+
+            return $query ? true : false;
+          }
+
+          public function getBlockedDays()
+          {
+            $query = $this->db->query("SELECT DATE_FORMAT(day, '%d/%m/%Y') as day FROM `oc_blocked_days` WHERE status = 'blocked'");
+            return $query->rows;
+          }
+
+        ]]></add>
+      </operation>      
+    </file>
+
+    <file path="admin/view/template/common/dashboard.twig">
+      <operation>
+        <search position="after" index="4"><![CDATA[{% endfor %}]]></search>
+        <add ><![CDATA[
+          
+          <div class="row" style="margin-top: 5rem">
+            <h2 class="text-center" style="margin-bottom: 2rem">Agenda de pedidos</h2>
+            <div class="col-sm-3"></div>
+            <div class="col-sm-6">
+              <div id='calendar'></div>
+            </div>
+            <div class="col-sm-3"></div>
+          </div>
+
+          <div class="row" style="margin-top: 3rem">
+            <h4 class="text-center" style="margin-bottom: 2rem">Controle manual de datas</h4>
+            <div class="col-sm-3"></div>
+            <div class="col-sm-6">
+              <div class="form-group">
+                <label>Liberar vaga na data: </label>
+                <div class="col-sm-10" style="padding: 0">
+                  <input type="date" name="add_data" id="add_day" class="form-control" style="padding: 0 .5rem !important;">
+                </div>
+                <div class="col-sm-2" style="padding: 0; display: flex; justify-content: flex-end">
+                  <button class="btn btn-primary" style="width: calc(100% - 1rem)" onclick="add_day(this, $(this).parent().parent().find('input').val())">Liberar</button>
+                </div>
+              </div>
+              <div class="form-group" style="margin-top: 3rem">
+                <label>Bloquear data: </label> <a onclick="blocked_days_modal()" class="pull-right">Ver datas bloqueadas</a>
+                <div class="col-sm-10" style="padding: 0">
+                  <input type="date" name="rm_data" class="form-control" style="padding: 0 .5rem !important;">
+                </div>
+                <div class="col-sm-2" style="padding: 0; display: flex; justify-content: flex-end">
+                  <button class="btn btn-danger" style="width: calc(100% - 1rem)">Bloquear</button>
+                </div>
+              </div>
+
+              <div class="form-group" style="margin-top: 3rem">
+                <label>Desbloquear data: </label>
+                <div class="col-sm-10" style="padding: 0">
+                  <input type="date" name="rm_data" class="form-control" style="padding: 0 .5rem !important;">
+                </div>
+                <div class="col-sm-2" style="padding: 0; display: flex; justify-content: flex-end">
+                  <button class="btn btn-success" style="width: calc(100% - 1rem)" onclick="rm_day($(this).parent().parent().find('input').val(), 'unblocked')">Desbloquear</button>
+                </div>
+              </div>
+
+            </div>
+            <div class="col-sm-3"></div>
+          </div>
+
+              <style type="text/css">
+                .fc-event-title-container{
+                    cursor: pointer;
+                    text-align: center;
+                }
+
+                .fc-daygrid-event{
+                    width: 90% !important;
+                    margin: 8px auto 0 !important;
+                }
+              </style>
+
+              <script>
+                const blocked_days_modal = () => {
+
+                  loading();
+                  $("#modal_blocked_days .modal-body .row").remove();
+
+                  $.ajax({
+                    type: 'GET',
+                    url: 'index.php?route=common/dashboard/get_blocked_days&user_token={{ user_token }}',
+                    success: function(res){
+                      loading('hide');
+                      $("#modal_blocked_days").modal('show');
+
+                      if(res['blocked_days']){
+                        const blocked_days = (res['blocked_days']);
+
+                        blocked_days.forEach(date => {
+                          $("#modal_blocked_days .modal-body").append(`
+                            <div class="row" style="padding: .5rem 1rem">
+                              <div class="col-sm-12">
+                                ${date.day}
+                              </div>
+                            </div>
+                          `)
+                        });
+                      }
+                    }
+                  })
+                }
+
+                document.addEventListener('DOMContentLoaded', function() {
+                  var dates = [];
+                  if('{{ disabled_dates }}' !== ''){
+                    dates = JSON.parse('{{ disabled_dates }}')
+                  }
+
+                  const path = (window.location.protocol+'//'+window.location.hostname+'/admin/index.php?route=sale/order/info&user_token={{ user_token }}&order_id=');
+            
+                  var calendarEl = document.getElementById('calendar');
+                  var calendar = new FullCalendar.Calendar(calendarEl, {
+                    initialView: 'dayGridMonth',
+                    locale: 'pt-br',
+                    events: dates,
+                    eventClick: function(info) {
+                        location.href = path + info.event.title.replace('Pedido #', '');
+                    }
+                  });
+            
+                  calendar.render();
+                });
+
+                const add_day = (btn, date) => {
+
+                  if(date === ''){
+                    Swal.fire({
+                      icon: 'warning',
+                      title: 'Atenção!',
+                      text: 'Escolha uma data válida.'
+                    })
+                    return;
+                  }
+
+                  loading();
+
+                  $.ajax({
+                    type: 'POST',
+                    url: 'index.php?route=common/dashboard/add_day&user_token={{ user_token }}',
+                    data: {'date': date},
+                    success: function(res){
+                      loading('hide')
+                      if(res.added_day){
+                        Swal.fire({
+                          icon: 'success',
+                          title: 'Pronto!',
+                          text: 'A data foi liberada para mais um pedido.'
+                        });
+                        document.getElementById('add_day').value = '';
+                      }else{
+                        Swal.fire({
+                          icon: 'error',
+                          title: 'Erro!',
+                          text: 'Algo deu errado. Tente novamente.'
+                        })
+                      }
+                    },
+                    error: function(err){
+                        Swal.fire({
+                          icon: 'error',
+                          title: 'Erro!',
+                          text: 'Algo deu errado. Tente novamente.'
+                        })
+                    }
+                  })
+                }
+
+                const rm_day = (date, status) => {
+                  if(date === ''){
+                    Swal.fire({
+                      icon: 'warning',
+                      title: 'Atenção!',
+                      text: 'Escolha uma data válida.'
+                    })
+                    return;
+                  }
+                  loading();
+
+                  $.ajax({
+                    type: 'POST',
+                    url: 'index.php?route=common/dashboard/rm_day&user_token={{ user_token }}',
+                    data: {'date': date, 'status': status},
+                    success: function(res){
+                      var des = '';
+                      if(status === 'unblocked') des = 'des';
+
+                      if(res.blocked_day){
+                        loading('hide');
+                        Swal.fire({
+                          icon: 'success',
+                          title: 'Pronto!',
+                          text: 'A data foi '+des+'bloqueada para pedidos.'
+                        });
+                        document.getElementById('rm_day').value = '';
+                      }else{
+                        Swal.fire({
+                          icon: 'error',
+                          title: 'Erro!',
+                          text: 'Algo deu errado. Tente novamente.'
+                        })
+                      }
+                    },
+                    error: function(err){
+                        Swal.fire({
+                          icon: 'error',
+                          title: 'Erro!',
+                          text: 'Algo deu errado. Tente novamente.'
+                        })
+                    }
+                  })
+                }
+
+                const loading = (hide) => {
+                  if(hide === 'hide'){
+                    document.getElementById('loading_wrapper').remove();
+                    return;
+                  }
+
+                  const loading_wrapper = document.createElement('div');
+                  loading_wrapper.id = "loading_wrapper";
+                  loading_wrapper.style.cssText = `
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    background: rgba(0,0,0,.5);
+                    width: 100vw;
+                    height: 100vh;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    z-index: 99999999;
+                  `;
+
+                  const dot1 = document.createElement('div'); dot1.id = "dot1"; dot1.classList.add('dot'); loading_wrapper.append(dot1);
+                  const dot2 = document.createElement('div'); dot2.id = "dot2"; dot2.classList.add('dot'); loading_wrapper.append(dot2);
+                  const dot3 = document.createElement('div'); dot3.id = "dot3"; dot3.classList.add('dot'); loading_wrapper.append(dot3);
+
+                  const dots = [dot1, dot2, dot3];
+
+                  dot2.style.animationDelay = '.15s';
+                  dot3.style.animationDelay = '.35s';
+
+                  dots.forEach((dot) => {
+                    dot.style.cssText = `
+                      width: 30px;
+                      height: 30px;
+                      border-radius: 50%;
+                      background: rgba(255,255,255,.5);
+                      margin: 0 1rem;
+                    `;
+
+                    var delay;
+                    switch(dot.id){
+                      case 'dot2':
+                        delay = 150;
+                        break;
+
+                      case 'dot3':
+                        delay = 300;
+                        break;
+                    }
+
+                    dot.animate([
+                      { transform: 'scale(1)' }, 
+                      { transform: 'scale(0)' }, 
+                      { transform: 'scale(1)' }
+                    ], { 
+                      duration: 1000,
+                      iterations: Infinity,
+                      delay: delay
+                    });
+                  });
+
+                  document.body.appendChild(loading_wrapper);
+                }
+              </script>
+
+              <div class="modal fade" id="modal_blocked_days" tabindex="-1" role="dialog" aria-labelledby="modal_blocked_days" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered" role="document">
+                  <div class="modal-content">
+                    <div class="modal-header">
+                      <h5 class="modal-title" id="modal_blocked_days_title">Datas bloqueadas</h5>
+                      <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                      </button>
+                    </div>
+                    <div class="modal-body px-3">
+                      
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+        ]]></add>
+      </operation>
+    </file>
+
+    <file path="catalog/view/theme/aline/template/common/header.twig">
+      <operation>
+        <search path=""><![CDATA[</head>]]></search>
+        <add position="before"><![CDATA[
+          <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.9.0/js/bootstrap-datepicker.min.js"></script>
+          <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.9.0/css/bootstrap-datepicker.min.css">
+
+            <script src="view/javascript/calendar.min.js" type="text/javascript"></script>
+            <script src="view/javascript/pt-br.min.js" type="text/javascript"></script>
+            <link href="view/stylesheet/calendar.min.css" type="text/css" rel="stylesheet" />
+        ]]></add>
+      </operation>
+    </file>
+
+    <file path="catalog/view/theme/aline/template/product/product.twig">
+      <operation>
+        <search path=""><![CDATA[<input type="text" name="option[{{ option.product_option_id }}]" value="{{ option.value }}" data-date-format="YYYY-MM-DD" id="input-option{{ option.product_option_id }}" class="form-control" />]]></search>
+        <add position="replace"><![CDATA[
+          <input type="text" name="option[{{ option.product_option_id }}]" value="{{ option.value }}" id="input-option{{ option.product_option_id }}" class="form-control c_datepicker" onkeydown="return false" />
+          <a onclick="return;" title="
+              Produtos feitos sob encomenda costumam levar um tempinho para serem feitos. Por isso, pedimos para que você escolha o dia em que espera que o(a) {{ heading_title }} fique pronto. Ah! Não se esqueça que, depois de pronto e despachado, você ainda vai ter que esperar pelos dias que seu método de envio vai estimar pela entrega para receber seu pedido ;)
+            " data-toggle="tooltip" style="display: flex; align-items: center; padding-left: 15px">
+            <i class="fas fa-question-circle"></i>
+          </a>
+          <small class="text-secondary font-italic" style="width: 100%">* datas em cinza estão indisponíveis</small>
+          <script>
+            const disable_dates = JSON.parse('{{ disable_dates }}');
+
+            $.fn.datepicker.dates['en'] = {
+                days: ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"],
+                daysShort: ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sab"],
+                daysMin: ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sab"],
+                months: ["Janeiro", "Fevereiro", "Março", "Abil", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"],
+                monthsShort: ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"],
+                today: "Hoje",
+                clear: "Limpar",
+                format: "dd/mm/yyyy",
+                titleFormat: "MM yyyy",
+                weekStart: 0
+            };
+
+            $('.c_datepicker').datepicker({
+              format: 'dd/mm/yyyy',
+              datesDisabled: disable_dates,
+              daysOfWeekDisabled: [0,6]
+            });
+
+            $(".c_datepicker").on('focus', function(){
+                $(".datepicker.datepicker-dropdown").css('width', $('.c_datepicker').css('width'))
+                $(".datepicker.datepicker-dropdown table").css('width', '100%')
+            })
+          </script>
+        ]]></add>
+      </operation>
+
+      <operation>
+        <search><![CDATA[<button class="btn btn-default" type="button"><i class="fa fa-calendar"></i></button>]]></search>
+        <add position="replace"><![CDATA[]]></add>
+      </operation>
+
+      <operation>
+        <search position="replace" index="1"><![CDATA[<span class="input-group-btn">]]></search>
+        <add><![CDATA[]]></add>
+      </operation>
+
+    </file>
+
+    <file path="catalog/controller/product/product.php">
+        <operation>
+          <search><![CDATA[$product_option_value_data = array();]]></search>
+          <add position="after"><![CDATA[
+            $data['disable_dates'] = array();
+            if($option['type'] == 'date'){
+              if($this->model_catalog_product->thereIsOrderWithThisProduct($this->request->get['product_id'])){
+                if($this->model_catalog_product->isThereOrderWithThisOptionAndThisProduct($this->request->get['product_id'], $option['product_option_id'])){
+                  foreach($this->model_catalog_product->getDateFromOrder($this->request->get['product_id'], $option['product_option_id']) as $row){
+                    array_push($data['disable_dates'], $row['value']);
+                  }
+                }
+              }
+            }
+
+            $data['added_days'] = $this->model_catalog_product->getDays();
+
+            foreach ($data['added_days'] as $key => $added_day) {
+              $tem_data = in_array($added_day['day'] , ($data['disable_dates']));
+              if($tem_data){
+                if($this->model_catalog_product->numberOfOrdersIsLowerThanNumberOfAddedDays($data['disable_dates'][$key])){
+                  $elm_to_del = array($added_day['day']);
+                  $data['disable_dates'] = array_values(array_diff($data['disable_dates'],$elm_to_del));
+                }
+              }
+            }
+
+            $blocked_days = $this->model_catalog_product->getBlockedDays();
+            foreach ($blocked_days as $key => $day) {
+              array_push($data['disable_dates'], $day['day']);
+            }
+
+            $data['disable_dates'] = json_encode($data['disable_dates']);
+          ]]></add>
+        </operation>
+    </file>
+
+    <file path="catalog/model/catalog/product.php">
+        <operation>
+          <search><![CDATA[class ModelCatalogProduct extends Model {]]></search>
+          <add position="after"><![CDATA[
+            public function thereIsOrderWithThisProduct($product_id){
+                $query = $this->db->query("SELECT COUNT(*) as total FROM " . DB_PREFIX . "order_product where product_id = " . $product_id);
+                return intval($query->row['total']) > 0 ? true : false;
+            }
+
+            public function isThereOrderWithThisOptionAndThisProduct($product_id, $option_id)
+            {
+              $query = $this->db->query("SELECT COUNT(*) as total FROM " . DB_PREFIX . "order_option oo INNER JOIN " . DB_PREFIX . "order_product op ON oo.order_product_id = op.order_product_id WHERE op.product_id = " . $product_id . " AND product_option_id = " . $option_id);
+
+              return intval($query->row['total']) > 0 ? true : false;
+            }
+
+            public function getDateFromOrder($product_id, $option_id)
+            {
+              $query = $this->db->query("SELECT value as value FROM " . DB_PREFIX . "order_option oo INNER JOIN " . DB_PREFIX . "order_product op ON oo.order_product_id = op.order_product_id INNER JOIN oc_order ord ON ord.order_id = oo.order_id WHERE op.product_id = " . $product_id . " AND product_option_id = " . $option_id . " AND ord.order_status_id <> 0");
+
+              return $query->rows;
+            }
+
+            public function isThereOrderWithThisOptionAndThisProductAndThisDate($product_id, $option_id, $date)
+            {
+              $query = $this->db->query("SELECT COUNT(*) as total FROM " . DB_PREFIX . "order_option oo INNER JOIN " . DB_PREFIX . "order_product op ON oo.order_product_id = op.order_product_id WHERE op.product_id = " . $product_id . " AND product_option_id = " . $option_id . " AND oo.value = '" . $date . "'");
+
+
+              return intval($query->row['total']) > 0 ? true : false;
+            }
+
+            public function isThisTheDateOption($product_option_id)
+            {
+              $query = $this->db->query("SELECT type FROM " . DB_PREFIX . "option o INNER JOIN " . DB_PREFIX . "product_option po ON o.option_id = po.option_id WHERE po.product_option_id = " . $product_option_id);
+
+              return intval($query->row['type']) == 'date' ? true : false;
+            }
+
+            public function getDays()
+            {
+              $query = $this->db->query("SELECT DATE_FORMAT(day, '%d/%m/%Y') as day FROM `oc_added_days`");
+              return $query->rows;
+            }
+
+            public function numberOfOrdersIsLowerThanNumberOfAddedDays($date)
+            {
+              $query1 = $this->db->query("SELECT COUNT(*) as total FROM " . DB_PREFIX . "order_option oo INNER JOIN " . DB_PREFIX . "order_product op ON oo.order_product_id = op.order_product_id INNER JOIN oc_order ord ON ord.order_id = oo.order_id WHERE ord.order_status_id <> 0 AND oo.value = '".$date."'");
+              
+              $query2 = $this->db->query("SELECT COUNT(*) as total FROM oc_added_days WHERE day = '".explode('/', $date)[2].'-'.explode('/', $date)[1].'-'.explode('/', $date)[0]."'");
+
+              return ($query1->row['total']) <= $query2->row['total'];
+            }
+
+            public function getBlockedDays()
+            {
+              $query = $this->db->query("SELECT DATE_FORMAT(day, '%d/%m/%Y') as day FROM `oc_blocked_days` WHERE status = 'blocked'");
+              return $query->rows;
+            }
+
+          ]]></add>
+        </operation>
+    </file>
+
+    <file path="catalog/controller/checkout/cart.php">
+        <operation>
+          <search><![CDATA[$product_options = $this->model_catalog_product->getProductOptions($this->request->post['product_id']);]]></search>
+          <add position="before"><![CDATA[
+              foreach ($option as $key => $value) {
+                if($this->model_catalog_product->isThisTheDateOption($key)){
+                  if($this->model_catalog_product->thereIsOrderWithThisProduct($product_id)){
+                    if($this->model_catalog_product->isThereOrderWithThisOptionAndThisProduct($product_id, $key)){
+                      if($this->model_catalog_product->isThereOrderWithThisOptionAndThisProductAndThisDate($product_id, $key, $value)){
+                        if(!$this->model_catalog_product->numberOfOrdersIsLowerThanNumberOfAddedDays($value)){
+                          $json['error']['option'][$key] = "Essa data não está disponível. Por favor, escolha outra.";
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+          ]]></add>
+        </operation>
+    </file>
+
+    <file path="catalog/controller/checkout/payment_method.php">
+      <operation>
+        <search><![CDATA[$products = $this->cart->getProducts();]]></search>
+        <add position="after"><![CDATA[
+            $this->load->model('catalog/product');
+        ]]></add>
+      </operation>
+
+       <operation>
+        <search><![CDATA[foreach ($products as $product) {]]></search>
+        <add position="after"><![CDATA[
+            foreach ($product['option'] as $option) {
+              $key = $option['product_option_id'];
+              $value = $option['value'];
+              $product_id = $product['product_id'];
+                if($this->model_catalog_product->isThisTheDateOption($key)){
+                  if($this->model_catalog_product->thereIsOrderWithThisProduct($product_id)){
+                    if($this->model_catalog_product->isThereOrderWithThisOptionAndThisProduct($product_id, $key)){
+                      if($this->model_catalog_product->isThereOrderWithThisOptionAndThisProductAndThisDate($product_id, $key, $value)){
+                        if(!$this->model_catalog_product->numberOfOrdersIsLowerThanNumberOfAddedDays($value)){
+                          $json['error']['warning'] = 'A data escolhida para o produto "'.$product['name'].'" deixou de estar disponível. Por favor, altere a opção de data do produto para continuar.';
+                        }
+                      }
+                    }
+                  }
+                }
+            }
+        ]]></add>
+      </operation>
+    </file>
+
+</modification>
