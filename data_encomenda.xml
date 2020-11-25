@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <modification>
     <name>Data Encomenda</name>
-    <version>1.5.1</version>
+    <version>1.6.0</version>
     <code>Data Encomenda</code>
     <author>JF Carvalho</author>
     <link>https://orions.com.br</link>
@@ -43,6 +43,7 @@
             }
 
             $data['disabled_dates'] = json_encode($data['disabled_dates']);
+            $data['startDate'] = $this->config->get('config_data_entrega_startdate');
           ]]></add>
       </operation>
 
@@ -85,6 +86,18 @@
               $this->load->model('sale/order');
 
               $data['blocked_days'] = $this->model_sale_order->getBlockedDays();
+
+              $this->response->addHeader('Content-Type: application/json');
+              $this->response->setOutput(json_encode($data));
+            }
+
+            public function setStartDate()
+            {
+              $this->load->model('setting/setting');
+
+              $date = $_POST['date'];
+
+              $data['startDate'] = $this->model_setting_setting->setStartDate($date);
 
               $this->response->addHeader('Content-Type: application/json');
               $this->response->setOutput(json_encode($data));
@@ -180,11 +193,28 @@
           
           <div class="row" style="margin-top: 5rem">
             <h2 class="text-center" style="margin-bottom: 2rem">Agenda de pedidos</h2>
-            <div class="col-sm-3"></div>
-            <div class="col-sm-6">
-              <div id='calendar'></div>
+
+            <div class="row">
+              <div class="col-sm-3"></div>
+              <div class="col-sm-6 form-group">
+                <label>Configurar </label>
+                <div style="display: flex; align-items: flex-end">
+                  Período mínimo de <input type="text" name="" style="width: 30px; margin: 0 5px" maxlength="2" value="{{ startDate }}"> dias após data atual.
+                  <button class="btn btn-primary" style="margin-left: 10px" onclick="save_startDate($(this).parent().find('input').val())">Salvar</button>
+                </div>
+              </div>
+              <div class="col-sm-3"></div>
             </div>
-            <div class="col-sm-3"></div>
+
+            <hr>
+
+            <div class="row">
+              <div class="col-sm-3"></div>
+              <div class="col-sm-6">
+                <div id='calendar'></div>
+              </div>
+              <div class="col-sm-3"></div>
+            </div> 
           </div>
 
           <div class="row" style="margin-top: 3rem">
@@ -376,6 +406,25 @@
                   })
                 }
 
+                const save_startDate = (val) => {
+                  loading();
+
+                    $.ajax({
+                      type: 'POST',
+                      url: 'index.php?route=common/dashboard/setStartDate&user_token={{ user_token }}',
+                      data: {'date': val},
+                      success: function(res){
+                        loading('hide');
+                        Swal.fire({
+                          icon:'success',
+                          title: 'Pronto!',
+                          text: 'Configuração salva com sucesso'
+                        })
+                      }
+                    })
+                  
+                }
+
                 const loading = (hide) => {
                   if(hide === 'hide'){
                     document.getElementById('loading_wrapper').remove();
@@ -489,6 +538,16 @@
           <script>
             const disable_dates = JSON.parse('{{ disable_dates }}');
 
+            const startDate = '{{ startDate }}';
+            
+            var date;
+            var d = new Date();
+            if(startDate !== ''){             
+              d.setDate(d.getDate() + startDate);
+            }
+
+            date = ((String(d.getDate()).length == 1) ? ("0" + d.getDate()).slice(-2) : d.getDate())+ '/' + ((String(d.getMonth()).length === 1) ? ("0" + (d.getMonth() + 1)).slice(-2) : d.getMonth() +1) + '/' + d.getFullYear();
+
             $.fn.datepicker.dates['en'] = {
                 days: ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"],
                 daysShort: ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sab"],
@@ -505,7 +564,8 @@
             $('.c_datepicker').datepicker({
               format: 'dd/mm/yyyy',
               datesDisabled: disable_dates,
-              daysOfWeekDisabled: [0,6]
+              daysOfWeekDisabled: [0,6],
+              startDate: date
             });
 
             $(".c_datepicker").on('focus', function(){
@@ -561,6 +621,7 @@
             }
 
             $data['disable_dates'] = json_encode($data['disable_dates']);
+            $data['startDate'] = $this->config->get('config_data_entrega_startdate');
           ]]></add>
         </operation>
     </file>
@@ -676,6 +737,20 @@
                   }
                 }
             }
+        ]]></add>
+      </operation>
+    </file>
+
+    <file path="admin/model/setting/setting.php">
+      <operation>
+        <search><![CDATA[class ModelSettingSetting extends Model {]]></search>
+        <add position="after"><![CDATA[
+
+  public function setStartDate($date)
+  {
+    $this->db->query("DELETE FROM " . DB_PREFIX . "setting WHERE `key` = 'config_data_entrega_startdate'"); 
+    $this->db->query("INSERT INTO " . DB_PREFIX . "setting (`store_id`, `code`, `key`, `value`, `serialized`) VALUES ('0', 'config_data_entrega_startdate', 'config_data_entrega_startdate', '" . $date . "', 0)");
+  }
         ]]></add>
       </operation>
     </file>
