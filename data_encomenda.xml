@@ -6,7 +6,7 @@
     <author>JF Carvalho</author>
     <link>https://orions.com.br</link>
 
-    <file path="catalog/view/theme/aline/template/common/header.twig">
+    <file path="catalog/view/theme/*/template/common/header.twig">
       <operation>
         <search path=""><![CDATA[</head>]]></search>
         <add position="before"><![CDATA[
@@ -510,7 +510,7 @@
       </operation>
     </file>
 
-    <file path="catalog/view/theme/aline/template/common/header.twig">
+    <file path="catalog/view/theme/*/template/common/header.twig">
       <operation>
         <search path=""><![CDATA[</head>]]></search>
         <add position="before"><![CDATA[
@@ -524,7 +524,7 @@
       </operation>
     </file>
 
-    <file path="catalog/view/theme/aline/template/product/product.twig">
+    <file path="catalog/view/theme/*/template/product/product.twig">
       <operation>
         <search path=""><![CDATA[<input type="text" name="option[{{ option.product_option_id }}]" value="{{ option.value }}" data-date-format="YYYY-MM-DD" id="input-option{{ option.product_option_id }}" class="form-control" />]]></search>
         <add position="replace"><![CDATA[
